@@ -25,10 +25,17 @@ public class ArrayPublisher<T> implements Publisher<T> {
 
             @Override
             public void request(long n) {
-                for (int i = 0; i < n && index < array.length; i++, index++) {
-                    subscriber.onNext(array[index]);
+                boolean errorOccurred = false;
+                for (int i = 0; i < n && index < array.length && !errorOccurred; i++, index++) {
+                    T element = array[index];
+                    if (element == null) {
+                        subscriber.onError(new NullPointerException());
+                        errorOccurred = true;
+                    } else {
+                        subscriber.onNext(element);
+                    }
                 }
-                if (index == array.length) {
+                if (index == array.length && !errorOccurred) {
                     subscriber.onComplete();
                 }
             }

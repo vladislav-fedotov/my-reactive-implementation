@@ -8,9 +8,11 @@ import org.reactivestreams.Subscription;
 
 import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.LongStream;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.*;
 import static org.test.reactive.ArrayPublisherTest.Signal.*;
 
 public class ArrayPublisherTest {
@@ -57,10 +59,10 @@ public class ArrayPublisherTest {
             }
         });
 
-        Assertions.assertThat(waitForOnComplete.await(1, SECONDS)).isTrue();
+        assertThat(waitForOnComplete.await(1, SECONDS)).isTrue();
 
-        Assertions.assertThat(sink).containsExactly(array);
-        Assertions.assertThat(signalsOrderKeeper).containsExactly(ON_SUBSCRIBE, ON_NEXT, ON_COMPLETE);
+        assertThat(sink).containsExactly(array);
+        assertThat(signalsOrderKeeper).containsExactly(ON_SUBSCRIBE, ON_NEXT, ON_COMPLETE);
     }
 
     @Test
@@ -94,24 +96,64 @@ public class ArrayPublisherTest {
             }
         });
 
-        Assertions.assertThat(sink).isEmpty();
+        assertThat(sink).isEmpty();
 
         subscriptionKeeper[0].request(1); // Ask for the first element
-        Assertions.assertThat(sink).containsExactly(0L);
+        assertThat(sink).containsExactly(0L);
 
         subscriptionKeeper[0].request(1); // Ask for the second element
-        Assertions.assertThat(sink).containsExactly(0L, 1L);
+        assertThat(sink).containsExactly(0L, 1L);
 
         subscriptionKeeper[0].request(1); // Ask for the third element
-        Assertions.assertThat(sink).containsExactly(0L, 1L, 2L);
+        assertThat(sink).containsExactly(0L, 1L, 2L);
 
         subscriptionKeeper[0].request(1); // Ask for the fourth element
-        Assertions.assertThat(sink).containsExactly(0L, 1L, 2L, 3L);
+        assertThat(sink).containsExactly(0L, 1L, 2L, 3L);
 
         subscriptionKeeper[0].request(1); // Ask for the fifth element
-        Assertions.assertThat(sink).containsExactly(0L, 1L, 2L, 3L, 4L);
+        assertThat(sink).containsExactly(0L, 1L, 2L, 3L, 4L);
 
-        Assertions.assertThat(waitForOnComplete.await(1, SECONDS)).isTrue();
-        Assertions.assertThat(sink).containsExactly(array);
+        assertThat(waitForOnComplete.await(1, SECONDS)).isTrue();
+        assertThat(sink).containsExactly(array);
+    }
+
+    @Test
+    public void mustRaiseExceptionInCaseOfNull() throws InterruptedException {
+        CountDownLatch waitForOnComplete = new CountDownLatch(1);
+
+        ArrayList<Long> sink = new ArrayList<>();
+
+        ArrayPublisher<Long> publisher = new ArrayPublisher<>(new Long[] {null, 1L, 2L, 3L, 4L});
+        AtomicReference<Throwable> thrownException = new AtomicReference<>();
+        AtomicReference<Boolean> onCompleteCalled = new AtomicReference<>(false);
+        publisher.subscribe(new Subscriber<Long>() {
+            @Override
+            public void onSubscribe(Subscription subscription) {
+                subscription.request(5);
+            }
+
+            @Override
+            public void onNext(Long l) {
+                sink.add(l);
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                thrownException.set(t);
+                waitForOnComplete.countDown();
+            }
+
+            @Override
+            public void onComplete() {
+                onCompleteCalled.set(true);
+            }
+        });
+
+        assertThat(waitForOnComplete.await(1, SECONDS)).isTrue();
+
+        assertThat(thrownException.get()).isNotNull();
+        assertThat(thrownException.get()).isInstanceOf(NullPointerException.class);
+        assertThat(sink).isEmpty();
+        assertThat(onCompleteCalled.get()).isFalse();
     }
 }
