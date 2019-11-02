@@ -104,10 +104,7 @@ public class ArrayPublisherTest {
         subscriptionKeeper[0].request(1); // Ask for the second element
         assertThat(sink).containsExactly(0L, 1L);
 
-        subscriptionKeeper[0].request(1); // Ask for the third element
-        assertThat(sink).containsExactly(0L, 1L, 2L);
-
-        subscriptionKeeper[0].request(1); // Ask for the fourth element
+        subscriptionKeeper[0].request(2); // Ask for the third and fourth elements
         assertThat(sink).containsExactly(0L, 1L, 2L, 3L);
 
         subscriptionKeeper[0].request(1); // Ask for the fifth element
@@ -156,4 +153,42 @@ public class ArrayPublisherTest {
         assertThat(sink).isEmpty();
         assertThat(onCompleteCalled.get()).isFalse();
     }
+
+    @Test
+    public void shouldAvoidRecursiveCallBetweenRequestAndOnNext() throws InterruptedException {
+        CountDownLatch waitForOnComplete = new CountDownLatch(1);
+
+        ArrayList<Long> sink = new ArrayList<>();
+
+        int requestNumberOfElements = 5;
+        Long[] array = LongStream.range(0, requestNumberOfElements).boxed().toArray(Long[]::new);
+        ArrayPublisher<Long> publisher = new ArrayPublisher<>(array);
+        AtomicReference<Subscription> subscriptionKeeper = new AtomicReference<>();
+        publisher.subscribe(new Subscriber<Long>() {
+            @Override
+            public void onSubscribe(Subscription subscription) {
+                subscriptionKeeper.set(subscription);
+                subscription.request(1);
+            }
+
+            @Override
+            public void onNext(Long l) {
+                sink.add(l);
+                subscriptionKeeper.get().request(1);
+            }
+
+            @Override
+            public void onError(Throwable t) {}
+
+            @Override
+            public void onComplete() {
+                waitForOnComplete.countDown();
+            }
+        });
+
+        assertThat(waitForOnComplete.await(1, SECONDS)).isTrue();
+        assertThat(sink).containsExactly(array);
+    }
+
+
 }
